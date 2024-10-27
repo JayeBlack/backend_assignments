@@ -159,4 +159,4 @@ def get_detailed_order_summary(customer_id):
 
 get_detailed_order_summary(1)
 # Close the database connection
-conn.close()
+# conn.close() This shuold remain opened in orther for the menu option to work
