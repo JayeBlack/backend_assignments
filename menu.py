@@ -1,5 +1,5 @@
 import sqlite3
-from e-commerce.py import place_order, get_order_history, get_detailed_order_summary
+from e_commerce import place_order, get_order_history, get_detailed_order_summary
 
 def connect_to_db():
     return sqlite3.connect('ecommerce.db')
