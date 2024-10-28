@@ -71,60 +71,44 @@ cursor.executemany('INSERT OR IGNORE INTO Customers (name, email) VALUES (?, ?)'
 # Commit the changes to ensure tables are populated
 conn.commit()
 
-
 # Decorator to validate user input
 def validate_user_input(func):
-    def wrapper(*args, **kwargs):
-        product_id = kwargs.get('product_id')
+    def wrapper(conn, cursor, customer_id, product_id, quantity):
         cursor.execute("SELECT stock FROM Products WHERE product_id=?", (product_id,))
         result = cursor.fetchone()
-        if result and result[0] > 0:
-            return func(*args, **kwargs)
+        if result and result[0] >= quantity:
+            return func(conn, cursor, customer_id, product_id, quantity)
         else:
-            print("Product not found or out of stock")
-
+            print("Product not found or out of stock.")
     return wrapper
-
 
 # Lambda for discounts (10%)
 discount = lambda total_items: 0.10 if total_items > 10 else 0
 
-
 @validate_user_input
-def place_order(customer_id, product_id, quantity):
+def place_order(conn, cursor, customer_id, product_id, quantity):
     cursor.execute("SELECT price FROM Products WHERE product_id=?", (product_id,))
-    original_price_per_item = cursor.fetchone()
+    product_data = cursor.fetchone()
 
-    # Check if the product was found in the database
-    if original_price_per_item is None:
+    if product_data is None:
         print(f"Error: Product with ID '{product_id}' not found.")
-        return  # Exit the function if the product is not found
+        return
 
-    # Extract the price from the tuple returned by fetchone()
-    original_price_per_item = original_price_per_item[0]
+    price_per_item = product_data[0]
+    total_price = price_per_item * quantity
+    discount_percentage = discount(quantity)
+    discount_amount = total_price * discount_percentage
+    final_price = total_price - discount_amount
 
-    total_price = original_price_per_item * quantity
-    discount_percentage = discount(quantity)  # Calculate discount
-    discount_amount = total_price * discount_percentage  # Calculate discount amount
-    final_price = total_price - discount_amount  # Calculate final price after discount
-
-    # Save the order to the database
     cursor.execute('''INSERT INTO Orders (customer_id, product_id, price, quantity) 
                       VALUES (?, ?, ?, ?)''',
                    (customer_id, product_id, final_price, quantity))
-    conn.commit()  # Commit the transaction to save changes
+    conn.commit()
 
     print(f"Order placed for {quantity} unit(s) of product ID {product_id}. Total Price: GHS {final_price:.2f}")
 
-
-# Example of placing orders with test cases
-place_order(customer_id=1, product_id=1, quantity=15)  # Bulk order with discount
-place_order(customer_id=2, product_id=5, quantity=8)  # No discount
-place_order(customer_id=3, product_id=2, quantity=5)  # No discount
-
-
 # Generator to stream order history for each customer
-def get_order_history(customer_id):
+def get_order_history(conn, cursor, customer_id):
     cursor.execute("SELECT * FROM Orders WHERE customer_id=?", (customer_id,))
     while True:
         order = cursor.fetchone()
@@ -132,15 +116,8 @@ def get_order_history(customer_id):
             break
         yield order
 
-
-# Display order history for a customer
-print("\nOrder History for Customer 1:")
-for order in get_order_history(1):
-    print(order)
-
-
 # List Comprehension to summarize orders
-def get_detailed_order_summary(customer_id):
+def get_detailed_order_summary(conn, cursor, customer_id):
     cursor.execute('''
         SELECT Products.name AS product_name, Orders.quantity, Orders.price 
         FROM Orders 
@@ -148,15 +125,17 @@ def get_detailed_order_summary(customer_id):
         WHERE Orders.customer_id = ?
     ''', (customer_id,))
 
-    # Fetch all rows and process with list comprehension
     result = cursor.fetchall()
     summary = [f"{product_name}: {quantity} unit(s) at GHS {price:.2f}"
                for product_name, quantity, price in result]
 
     print(f"\nOrder summary for Customer {customer_id}:\n" + "\n".join(summary))
 
+# Example call for placing orders
+# place_order(conn, cursor, 1, 1, 15)
 
+# Example call to get detailed order summary
+# get_detailed_order_summary(conn, cursor, 1)
 
-get_detailed_order_summary(1)
 # Close the database connection
-# conn.close() This shuold remain opened in orther for the menu option to work
+conn.close()
